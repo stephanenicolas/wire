@@ -29,6 +29,7 @@ import com.squareup.wire.proto3.requiredextension.RequiredExtensionMessage
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.Assert.fail
 import org.junit.Test
+import squareup.proto3.alltypes.All64
 import squareup.proto3.pizza.BuyOneGetOnePromotion
 import squareup.proto3.pizza.FreeGarlicBreadPromotion
 import squareup.proto3.pizza.Pizza
@@ -102,6 +103,7 @@ class Proto3WireProtocCompatibilityTests {
     val json = """
         |{
         |  "address": "507 Cross Street",
+        |  "orders": [],
         |  "pizzas": [
         |    {
         |      "toppings": [
@@ -129,6 +131,7 @@ class Proto3WireProtocCompatibilityTests {
 
   @Test fun wireProtocJsonRoundTrip() {
     val protocMessage = PizzaOuterClass.PizzaDelivery.newBuilder()
+        .addAllOrders(listOf(1L, 2L))
         .setAddress("507 Cross Street")
         .addPizzas(PizzaOuterClass.Pizza.newBuilder()
             .addToppings("pineapple")
@@ -149,6 +152,7 @@ class Proto3WireProtocCompatibilityTests {
     val protocMessageJson = jsonPrinter.print(protocMessage)
 
     val wireMessage = PizzaDelivery(
+        orders = listOf(1L, 2L),
         address = "507 Cross Street",
         pizzas = listOf(Pizza(toppings = listOf("pineapple", "onion"))),
         promotion = AnyMessage.pack(BuyOneGetOnePromotion(coupon = "MAUI"))
@@ -263,5 +267,87 @@ class Proto3WireProtocCompatibilityTests {
     } catch (expected: JsonDataException) {
       assertThat(expected).hasMessage("expected @type in \$.promotion")
     }
+  }
+
+  @Test fun uint64Json() {
+    val pizzaDelivery = PizzaDelivery(
+        orders = listOf(BIG_POSITIVE_NUMBER)
+    )
+    val json = """
+        |{
+        |  "orders": ["9223372036854775808"],
+        |  "pizzas": []
+        |}
+        """.trimMargin()
+    val moshi = Moshi.Builder()
+        .add(WireJsonAdapterFactory()
+            .plus(listOf(BuyOneGetOnePromotion.ADAPTER, FreeGarlicBreadPromotion.ADAPTER)))
+        .build()
+    val jsonAdapter = moshi.adapter(PizzaDelivery::class.java).indent("  ")
+    assertJsonEquals(jsonAdapter.toJson(pizzaDelivery), json)
+    assertThat(jsonAdapter.fromJson(json)).isEqualTo(pizzaDelivery)
+  }
+
+  @Test fun uint64JsonProtoc() {
+    val pizzaDelivery = PizzaOuterClass.PizzaDelivery.newBuilder()
+        .addOrders(BIG_POSITIVE_NUMBER)
+        .build()
+    val typeRegistry = JsonFormat.TypeRegistry.newBuilder()
+        .add(PizzaOuterClass.BuyOneGetOnePromotion.getDescriptor())
+        .add(PizzaOuterClass.FreeGarlicBreadPromotion.getDescriptor())
+        .build()
+    val json = """
+        |{
+        |  "orders": ["9223372036854775808"]
+        |}
+        """.trimMargin()
+    val jsonPrinter = JsonFormat.printer()
+        .usingTypeRegistry(typeRegistry)
+    assertThat(jsonPrinter.print(pizzaDelivery)).isEqualTo(json)
+    val jsonParser = JsonFormat.parser().usingTypeRegistry(typeRegistry)
+    val parsed = PizzaOuterClass.PizzaDelivery.newBuilder()
+        .apply { jsonParser.merge(json, this) }
+        .build()
+    assertThat(parsed).isEqualTo(pizzaDelivery)
+  }
+
+  @Test fun All64Json() {
+    val all64 = All64(
+        my_int64 = BIG_POSITIVE_NUMBER,
+        my_uint64 = BIG_POSITIVE_NUMBER,
+        my_sint64 = BIG_POSITIVE_NUMBER,
+        my_fixed64 = BIG_POSITIVE_NUMBER,
+        my_sfixed64 = BIG_POSITIVE_NUMBER,
+        rep_int64 = listOf(BIG_POSITIVE_NUMBER),
+        rep_uint64 = listOf(BIG_POSITIVE_NUMBER),
+        rep_sint64 = listOf(BIG_POSITIVE_NUMBER),
+        rep_fixed64 = listOf(BIG_POSITIVE_NUMBER),
+        rep_sfixed64 = listOf(BIG_POSITIVE_NUMBER)
+    )
+
+    val json = """
+        |{
+        |  "my_int64": "9223372036854775808",
+        |  "my_uint64": "9223372036854775808",
+        |  "my_sint64": "9223372036854775808",
+        |  "my_fixed64": "9223372036854775808",
+        |  "my_sfixed64": "9223372036854775808",
+        |  "rep_int64": "9223372036854775808",
+        |  "rep_uint64": "9223372036854775808",
+        |  "rep_sint64": "9223372036854775808",
+        |  "rep_fixed64": "9223372036854775808",
+        |  "rep_sfixed64": "9223372036854775808"
+        |}
+        """.trimMargin()
+    val moshi = Moshi.Builder()
+        .add(WireJsonAdapterFactory())
+        .build()
+    val jsonAdapter = moshi.adapter(All64::class.java).indent("  ")
+    assertJsonEquals(jsonAdapter.toJson(all64), json)
+    assertThat(jsonAdapter.fromJson(json)).isEqualTo(all64)
+  }
+
+  companion object {
+    private const val BIG_POSITIVE_NUMBER = -9223372036854775807L - 1L
   }
 }
