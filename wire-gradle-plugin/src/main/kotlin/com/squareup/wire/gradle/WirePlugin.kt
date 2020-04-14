@@ -17,11 +17,9 @@ package com.squareup.wire.gradle
 
 import org.gradle.api.Plugin
 import org.gradle.api.Project
-import org.gradle.api.internal.file.SourceDirectorySetFactory
 import org.gradle.api.plugins.JavaBasePlugin
 import org.gradle.api.tasks.SourceSetContainer
 import org.jetbrains.kotlin.gradle.plugin.KotlinBasePluginWrapper
-import javax.inject.Inject
 
 class WirePlugin : Plugin<Project> {
   private var kotlin = false
@@ -70,24 +68,24 @@ class WirePlugin : Plugin<Project> {
     project: Project,
     extension: WireExtension
   ) {
-    val sourceInput = WireInput(project, project.configurations.create("wireSourceDependencies"))
+    val sourceInput = WireInput(project.configurations.create("wireSourceDependencies"))
     if (extension.sourcePaths.isNotEmpty() ||
         extension.sourceTrees.isNotEmpty() ||
         extension.sourceJars.isNotEmpty()) {
-      sourceInput.addTrees(extension.sourceTrees)
-      sourceInput.addJars(extension.sourceJars)
-      sourceInput.addPaths(extension.sourcePaths)
+      sourceInput.addTrees(project, extension.sourceTrees)
+      sourceInput.addJars(project, extension.sourceJars)
+      sourceInput.addPaths(project, extension.sourcePaths)
     } else {
-      sourceInput.addPaths(setOf("src/main/proto"))
+      sourceInput.addPaths(project, setOf("src/main/proto"))
     }
 
-    val protoInput = WireInput(project, project.configurations.create("wireProtoDependencies"))
+    val protoInput = WireInput(project.configurations.create("wireProtoDependencies"))
     if (extension.protoPaths.isNotEmpty() ||
         extension.protoTrees.isNotEmpty() ||
         extension.protoJars.isNotEmpty()) {
-      protoInput.addTrees(extension.protoTrees)
-      protoInput.addJars(extension.protoJars)
-      protoInput.addPaths(extension.protoPaths)
+      protoInput.addTrees(project, extension.protoTrees)
+      protoInput.addJars(project, extension.protoJars)
+      protoInput.addPaths(project, extension.protoPaths)
     }
 
     // At this point, all source and proto file references should be set up for Gradle to resolve.
