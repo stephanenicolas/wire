@@ -114,6 +114,7 @@ class WirePlugin : Plugin<Project> {
     }
 
     val targets = outputs.map { it.toTarget() }
+
     val wireTask = project.tasks.named("generateProtos") as TaskProvider<WireTask>
     wireTask.configure {
       if (it.logger.isDebugEnabled) {

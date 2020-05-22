@@ -48,10 +48,26 @@ open class WireTask : SourceTask() {
 
   @Input
   @Optional
+  var sinceVersion: String? = null
+
+  @Input
+  @Optional
+  var untilVersion: String? = null
+
+  @Input
+  @Optional
+  var onlyVersion: String? = null
+
+  @Input
+  @Optional
   var rules: String? = null
 
   @Input
   lateinit var targets: List<Target>
+
+  @Input
+  @Optional
+  var proto3Preview: String? = null
 
   @TaskAction
   fun generateWireFiles() {
