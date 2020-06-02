@@ -40,6 +40,7 @@ internal class WireInput(var configuration: Configuration) {
 
   fun addPaths(project: Project, paths: Set<String>) {
     for (path in paths) {
+      println("path added: $path")
       val dependency = resolveDependency(project, path)
       configuration.dependencies.add(dependency)
     }
@@ -48,6 +49,7 @@ internal class WireInput(var configuration: Configuration) {
   fun addJars(project: Project, jars: Set<ProtoRootSet>) {
     for (jar in jars) {
       jar.srcJar?.let { path ->
+        println("jar added: $path")
         val dependency = resolveDependency(project, path)
         dependencyToIncludes[dependency] = jar.includes
         configuration.dependencies.add(dependency)
@@ -63,6 +65,7 @@ internal class WireInput(var configuration: Configuration) {
           "Invalid path string: \"${it.relativeTo(project.projectDir)}\". Path does not exist."
         }
       }
+      println("tree added: ${tree.asPath}")
       val dependency = project.dependencies.create(tree)
       configuration.dependencies.add(dependency)
     }
@@ -74,13 +77,20 @@ internal class WireInput(var configuration: Configuration) {
     val converted = parser.parseNotation(path)
 
     if (converted is File) {
+      println("file resolved: $converted for path: $path")
       val file = if (!converted.isAbsolute) File(project.projectDir, converted.path) else converted
 
       check(file.exists()) { "Invalid path string: \"$path\". Path does not exist." }
 
       return when {
-        file.isDirectory -> project.dependencies.create(project.files(path))
-        file.isJar -> project.dependencies.create(project.files(file.path))
+        file.isDirectory -> {
+          println("dir resolved: $path")
+          project.dependencies.create(project.files(path))
+        }
+        file.isJar -> {
+          println("jar resolved: $path")
+          project.dependencies.create(project.files(file.path))
+        }
         else -> throw IllegalArgumentException(
             """
             |Invalid path string: "$path".
@@ -99,6 +109,7 @@ internal class WireInput(var configuration: Configuration) {
           "Invalid path string: \"$path\". URL dependencies are not allowed."
       )
     } else {
+      println("external deps: $path")
       // Assume it's a possible external dependency and let Gradle sort it out later.
       return project.dependencies.create(path)
     }
@@ -137,6 +148,7 @@ internal class WireInput(var configuration: Configuration) {
       val srcDir = (dependency.files as SourceDirectorySet).srcDirs.first {
         path.startsWith(it.path + "/")
       }
+      println("dep location for src dir: $path")
       return listOf(Location.get(
           base = srcDir.path,
           path = path.substring(srcDir.path.length + 1)
@@ -144,7 +156,7 @@ internal class WireInput(var configuration: Configuration) {
     }
 
     val includes = dependencyToIncludes[dependency] ?: listOf()
-
+    println("dep location for jar include: $includes for path: $path")
     if (includes.isEmpty()) {
       return listOf(Location.get(path))
     }

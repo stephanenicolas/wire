@@ -19,6 +19,9 @@ class WirePluginTest {
     gradleRunner = GradleRunner.create()
         .withPluginClasspath()
         .withArguments("generateProtos", "--stacktrace")
+        .withDebug(true)
+        .forwardOutput()
+        .forwardOutput()
   }
 
   @After
