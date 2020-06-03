@@ -45,7 +45,9 @@ data class Location(
 
   override fun toString() = buildString {
     if (base.isNotEmpty()) {
+      append(':')
       append(base)
+      append('/')
       append('/')
     }
     append(path)

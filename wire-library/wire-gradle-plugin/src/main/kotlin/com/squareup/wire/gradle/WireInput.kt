@@ -88,17 +88,25 @@ internal class WireInput(var configuration: Configuration, var configuration2: C
 
   fun addTrees(project: Project, trees: Set<SourceDirectorySet>) {
     for (tree in trees) {
-      // TODO: this eagerly resolves dependencies; fix this!
-      tree.srcDirs.forEach {
-        check(it.exists()) {
-          "Invalid path string: \"${it.relativeTo(project.projectDir)}\". Path does not exist."
+        // TODO: this eagerly resolves dependencies; fix this!
+        tree.srcDirs.forEach {
+            check(it.exists()) {
+                "Invalid path string: \"${it.relativeTo(project.projectDir)}\". Path does not exist."
+            }
         }
-      }
-      println("tree added: ${tree.asPath}")
-      val dependency = project.dependencies.create(tree)
-      configuration.dependencies.add(dependency)
-
-      locationList.add(Location.get(project.file(tree.asPath).path))
+        println("tree added: ${tree.asPath}")
+        val dependency = project.dependencies.create(tree)
+        configuration.dependencies.add(dependency)
+        locationList.addAll(project.files(tree).map { file ->
+            val srcDir = tree.srcDirs.first {
+                file.path.startsWith(it.path + "/")
+            }
+            println("dep location for src dir: $srcDir is ${file.path}")
+            Location.get(
+                    base = srcDir.path,
+                    path = file.path.substring(srcDir.path.length + 1)
+            )
+        })
     }
   }
 
@@ -168,7 +176,7 @@ internal class WireInput(var configuration: Configuration, var configuration2: C
           get() = "$group:$name:$version"
 
   fun toLocations(): List<Location> {
-    println("location list: $locationList")
+    println("new location list: $locationList")
     val locationConfig2 = configuration2.dependencies
             .flatMap { dep ->
               configuration.files(dep)
@@ -184,7 +192,7 @@ internal class WireInput(var configuration: Configuration, var configuration2: C
                         }
                       }
             }
-    println("config2 : $locationConfig2")
+    println("new config : $locationConfig2")
     val locationConfig = configuration.dependencies
             .flatMap { dep ->
               configuration.files(dep)
@@ -192,14 +200,9 @@ internal class WireInput(var configuration: Configuration, var configuration2: C
                         file.toLocations(dep)
                       }
             }
-    println("config : $locationConfig")
-    return configuration.dependencies
-        .flatMap { dep ->
-          configuration.files(dep)
-              .flatMap { file ->
-                file.toLocations(dep)
-              }
-        }   
+      println("old config : $locationConfig")
+      println("equal config : ${locationConfig.equals(locationConfig2.plus(locationList))}")
+      return locationConfig2.plus(locationList)
   }
 
   private fun File.toLocations(dependency: Dependency): List<Location> {
@@ -215,7 +218,7 @@ internal class WireInput(var configuration: Configuration, var configuration2: C
     }
 
     val includes = dependencyToIncludes[dependency.id] ?: listOf()
-    println("dep location for jar include: $includes for path: $dependency.id")
+    println("dep location for jar include: $includes for path: ${dependency.id}")
     if (includes.isEmpty()) {
       return listOf(Location.get(path))
     }
