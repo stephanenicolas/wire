@@ -22,11 +22,11 @@ import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectories
-import org.gradle.api.tasks.SourceTask
+import org.gradle.api.DefaultTask
 import org.gradle.api.tasks.TaskAction
 import java.io.File
 
-open class WireTask : SourceTask() {
+open class WireTask : DefaultTask() {
   @get:OutputDirectories
   var outputDirectories: List<File>? = null
 

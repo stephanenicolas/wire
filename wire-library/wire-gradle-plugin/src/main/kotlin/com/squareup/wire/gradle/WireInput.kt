@@ -32,9 +32,9 @@ import java.net.URI
  * directory trees, jars, and coordinates). This includes registering dependencies with the project
  * so they can be resolved for us.
  */
-internal class WireInput(var configuration: Configuration, var configuration2: Configuration) {
+internal class WireInput(var configuration2: Configuration) {
   val name: String
-    get() = configuration.name
+    get() = configuration2.name
 
   private val dependencyToIncludes = mutableMapOf<String, List<String>>()
   private val locationList = mutableListOf<Location>()
@@ -43,10 +43,22 @@ internal class WireInput(var configuration: Configuration, var configuration2: C
   fun addPaths(project: Project, paths: Set<String>) {
     for (path in paths) {
       println("path added: $path")
-      val dependency = resolveDependency(project, path)
-      configuration.dependencies.add(dependency)
         val converted = parser.parseNotation(path)
         if (converted is File) {
+            val file = if (!converted.isAbsolute) File(project.projectDir, converted.path) else converted
+            check(file.exists()) { "Invalid path string: \"$path\". Path does not exist." }
+            if(!file.isJar && !file.isDirectory) {
+                throw IllegalArgumentException("""
+                    |Invalid path string: "$path".
+                    |For individual files, use the following syntax:
+                    |wire {
+                    |  sourcePath {
+                    |    srcDir 'dirPath'
+                    |    include 'relativePath'
+                    |  }
+                    |}
+                    """.trimMargin())
+            }
             locationList.add(Location.get(project.file(path).path))
         } else if (converted is URI && isURL(converted)) {
             throw IllegalArgumentException(
@@ -65,10 +77,23 @@ internal class WireInput(var configuration: Configuration, var configuration2: C
         println("jar added: $path")
         val dependency = resolveDependency(project, path)
         dependencyToIncludes[dependency.id] = jar.includes
-        configuration.dependencies.add(dependency)
 
         val converted = parser.parseNotation(path)
         if (converted is File) {
+            val file = if (!converted.isAbsolute) File(project.projectDir, converted.path) else converted
+            check(file.exists()) { "Invalid path string: \"$path\". Path does not exist." }
+            if(!file.isJar && !file.isDirectory) {
+                throw IllegalArgumentException("""
+                    |Invalid path string: "$path".
+                    |For individual files, use the following syntax:
+                    |wire {
+                    |  sourcePath {
+                    |    srcDir 'dirPath'
+                    |    include 'relativePath'
+                    |  }
+                    |}
+                    """.trimMargin())
+            }
           if(jar.includes.isEmpty()) {
             locationList.add(Location.get(project.file(path).path))
           } else {
@@ -95,8 +120,6 @@ internal class WireInput(var configuration: Configuration, var configuration2: C
             }
         }
         println("tree added: ${tree.asPath}")
-        val dependency = project.dependencies.create(tree)
-        configuration.dependencies.add(dependency)
         locationList.addAll(project.files(tree).map { file ->
             val srcDir = tree.srcDirs.first {
                 file.path.startsWith(it.path + "/")
@@ -163,11 +186,11 @@ internal class WireInput(var configuration: Configuration, var configuration2: C
       }
 
   fun debug(logger: Logger) {
-    configuration.dependencies.forEach { dep ->
+    configuration2.dependencies.forEach { dep ->
       val srcDirs = ((dep as? FileCollectionDependency)?.files as? SourceDirectorySet)?.srcDirs
       val includes = dependencyToIncludes[dep.id] ?: listOf()
       logger.debug("dep: $dep -> $srcDirs")
-      logger.debug("$name.files for dep: ${configuration.files(dep)}")
+      logger.debug("$name.files for dep: ${configuration2.files(dep)}")
       logger.debug("$name.includes for dep: $includes")
     }
   }
@@ -179,7 +202,7 @@ internal class WireInput(var configuration: Configuration, var configuration2: C
     println("new location list: $locationList")
     val locationConfig2 = configuration2.dependencies
             .flatMap { dep ->
-              configuration.files(dep)
+              configuration2.files(dep)
                       .map { file ->
                         val includes = dependencyToIncludes[dep.id] ?: listOf()
                         println("dep location for jar include: $includes for path: ${dep.id}")
@@ -193,9 +216,9 @@ internal class WireInput(var configuration: Configuration, var configuration2: C
                       }
             }
     println("new config : $locationConfig2")
-    val locationConfig = configuration.dependencies
+    val locationConfig = configuration2.dependencies
             .flatMap { dep ->
-              configuration.files(dep)
+              configuration2.files(dep)
                       .flatMap { file ->
                         file.toLocations(dep)
                       }

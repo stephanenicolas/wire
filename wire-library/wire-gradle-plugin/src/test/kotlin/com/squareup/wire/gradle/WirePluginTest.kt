@@ -21,7 +21,6 @@ class WirePluginTest {
         .withArguments("generateProtos", "--stacktrace")
         .withDebug(true)
         .forwardOutput()
-        .forwardOutput()
   }
 
   @After
