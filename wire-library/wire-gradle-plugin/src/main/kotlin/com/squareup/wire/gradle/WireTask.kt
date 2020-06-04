@@ -20,9 +20,6 @@ import com.squareup.wire.schema.Location
 import com.squareup.wire.schema.Target
 import com.squareup.wire.schema.WireRun
 import org.gradle.api.DefaultTask
-import org.gradle.api.file.FileCollection
-import org.gradle.api.provider.ListProperty
-import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.*
 import java.io.File
 
@@ -34,8 +31,6 @@ open class WireTask : DefaultTask() {
   var pluginVersion: String = VERSION
 
   @get:Internal
-  internal lateinit var sourceInput: WireInput
-
   internal val sourceInputLocations = project.objects.listProperty(Location::class.java)
 
   @get:Internal
@@ -95,8 +90,6 @@ open class WireTask : DefaultTask() {
     if (includes.isEmpty() && excludes.isEmpty()) logger.info("NO INCLUDES OR EXCLUDES")
 
     if (logger.isDebugEnabled) {
-      //sourceInput.debug(logger)
-      //protoInput.debug(logger)
       logger.debug("roots: $roots")
       logger.debug("prunes: $prunes")
       logger.debug("rules: $rules")

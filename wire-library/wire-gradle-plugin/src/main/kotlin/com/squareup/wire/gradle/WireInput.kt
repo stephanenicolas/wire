@@ -25,7 +25,6 @@ import org.gradle.api.file.SourceDirectorySet
 import org.gradle.api.internal.file.FileOrUriNotationConverter
 import org.gradle.api.logging.Logger
 import org.gradle.api.provider.Provider
-import org.gradle.api.provider.ProviderFactory
 import java.io.File
 import java.net.URI
 
@@ -45,31 +44,7 @@ internal class WireInput(var configuration2: Provider<Configuration>) {
   fun addPaths(project: Project, paths: Set<String>) {
     for (path in paths) {
       println("path added: $path")
-        val converted = parser.parseNotation(path)
-        if (converted is File) {
-            val file = if (!converted.isAbsolute) File(project.projectDir, converted.path) else converted
-            check(file.exists()) { "Invalid path string: \"$path\". Path does not exist." }
-            if(!file.isJar && !file.isDirectory) {
-                throw IllegalArgumentException("""
-                    |Invalid path string: "$path".
-                    |For individual files, use the following syntax:
-                    |wire {
-                    |  sourcePath {
-                    |    srcDir 'dirPath'
-                    |    include 'relativePath'
-                    |  }
-                    |}
-                    """.trimMargin())
-            }
-            locationList.add(Location.get(project.file(path).path))
-        } else if (converted is URI && isURL(converted)) {
-            throw IllegalArgumentException(
-                    "Invalid path string: \"$path\". URL dependencies are not allowed."
-            )
-        } else {
-            val dependency = project.dependencies.create(path)
-            configuration2.get().dependencies.add(dependency)
-        }
+      protoPathToLocationOrDependency(project, path, emptyList())
     }
   }
 
@@ -77,42 +52,45 @@ internal class WireInput(var configuration2: Provider<Configuration>) {
     for (jar in jars) {
       jar.srcJar?.let { path ->
         println("jar added: $path")
-
-        val converted = parser.parseNotation(path)
-        if (converted is File) {
-            val file = if (!converted.isAbsolute) File(project.projectDir, converted.path) else converted
-            check(file.exists()) { "Invalid path string: \"$path\". Path does not exist." }
-            if(!file.isJar && !file.isDirectory) {
-                throw IllegalArgumentException("""
-                    |Invalid path string: "$path".
-                    |For individual files, use the following syntax:
-                    |wire {
-                    |  sourcePath {
-                    |    srcDir 'dirPath'
-                    |    include 'relativePath'
-                    |  }
-                    |}
-                    """.trimMargin())
-            }
-          if(jar.includes.isEmpty()) {
-            locationList.add(Location.get(project.file(path).path))
-          } else {
-            locationList.addAll(jar.includes.map { include -> Location.get(base = project.file(path).path, path = include)})
-          }
-        } else if (converted is URI && isURL(converted)) {
-          throw IllegalArgumentException(
-                  "Invalid path string: \"$path\". URL dependencies are not allowed."
-          )
-      } else {
-          val dependency = project.dependencies.create(path)
-          dependencyToIncludes[dependency.id] = jar.includes
-          configuration2.get().dependencies.add(dependency)
-        }
+        protoPathToLocationOrDependency(project, path, jar.includes)
       }
     }
   }
 
-  fun addTrees(project: Project, trees: Set<SourceDirectorySet>) {
+    private fun protoPathToLocationOrDependency(project: Project, path: String, includes: List<String>): Boolean {
+        val converted = parser.parseNotation(path)
+        return if (converted is File) {
+            checkFileIsValid(project, converted, path)
+            locationList.addAll(locationWithIncludes(includes, project.file(path).path))
+        } else if (converted is URI && isURL(converted)) {
+            throw IllegalArgumentException(
+                    "Invalid path string: \"$path\". URL dependencies are not allowed."
+            )
+        } else {
+            val dependency = project.dependencies.create(path)
+            dependencyToIncludes[dependency.id] = includes
+            configuration2.get().dependencies.add(dependency)
+        }
+    }
+
+    private fun checkFileIsValid(project: Project, converted: File, path: String) {
+        val file = if (!converted.isAbsolute) File(project.projectDir, converted.path) else converted
+        check(file.exists()) { "Invalid path string: \"$path\". Path does not exist." }
+        if (!file.isJar && !file.isDirectory) {
+            throw IllegalArgumentException("""
+                        |Invalid path string: "$path".
+                        |For individual files, use the following syntax:
+                        |wire {
+                        |  sourcePath {
+                        |    srcDir 'dirPath'
+                        |    include 'relativePath'
+                        |  }
+                        |}
+                        """.trimMargin())
+        }
+    }
+
+    fun addTrees(project: Project, trees: Set<SourceDirectorySet>) {
     for (tree in trees) {
         // TODO: this eagerly resolves dependencies; fix this!
         tree.srcDirs.forEach {
@@ -164,14 +142,7 @@ internal class WireInput(var configuration2: Provider<Configuration>) {
                             .flatMap { file ->
                                 val includes = dependencyToIncludes[dep.id] ?: listOf()
                                 println("dep location for jar include: $includes for path: ${dep.id}")
-                                val value: List<Location> = if (includes.isEmpty()) {
-                                    listOf(Location.get(file.path))
-                                } else {
-                                    includes.map { include ->
-                                        Location.get(base = file.path, path = include)
-                                    }
-                                }
-                                value
+                                locationWithIncludes(includes, file.path)
                             }
                 }.plus(locationList)
     }
@@ -179,6 +150,14 @@ internal class WireInput(var configuration2: Provider<Configuration>) {
       return locationConfig2
   }
 
-  private val File.isJar
+    private fun locationWithIncludes(includes: List<String>, path: String): List<Location> = if (includes.isEmpty()) {
+            listOf(Location.get(path))
+        } else {
+            includes.map { include ->
+                Location.get(base = path, path = include)
+            }
+        }
+
+    private val File.isJar
     get() = path.endsWith(".jar")
 }
