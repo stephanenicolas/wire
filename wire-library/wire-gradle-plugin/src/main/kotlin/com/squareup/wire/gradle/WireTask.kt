@@ -16,14 +16,14 @@
 package com.squareup.wire.gradle
 
 import com.squareup.wire.VERSION
+import com.squareup.wire.schema.Location
 import com.squareup.wire.schema.Target
 import com.squareup.wire.schema.WireRun
-import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.Internal
-import org.gradle.api.tasks.Optional
-import org.gradle.api.tasks.OutputDirectories
 import org.gradle.api.DefaultTask
-import org.gradle.api.tasks.TaskAction
+import org.gradle.api.file.FileCollection
+import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.Provider
+import org.gradle.api.tasks.*
 import java.io.File
 
 open class WireTask : DefaultTask() {
@@ -36,8 +36,10 @@ open class WireTask : DefaultTask() {
   @get:Internal
   internal lateinit var sourceInput: WireInput
 
+  internal val sourceInputLocations = project.objects.listProperty(Location::class.java)
+
   @get:Internal
-  internal lateinit var protoInput: WireInput
+  internal val protoInputLocations = project.objects.listProperty(Location::class.java)
 
   @Input
   lateinit var roots: List<String>
@@ -93,8 +95,8 @@ open class WireTask : DefaultTask() {
     if (includes.isEmpty() && excludes.isEmpty()) logger.info("NO INCLUDES OR EXCLUDES")
 
     if (logger.isDebugEnabled) {
-      sourceInput.debug(logger)
-      protoInput.debug(logger)
+      //sourceInput.debug(logger)
+      //protoInput.debug(logger)
       logger.debug("roots: $roots")
       logger.debug("prunes: $prunes")
       logger.debug("rules: $rules")
@@ -102,8 +104,8 @@ open class WireTask : DefaultTask() {
     }
 
     val wireRun = WireRun(
-        sourcePath = sourceInput.toLocations(),
-        protoPath = protoInput.toLocations(),
+        sourcePath = sourceInputLocations.get(),
+        protoPath = protoInputLocations.get(),
         treeShakingRoots = if (roots.isEmpty()) includes else roots,
         treeShakingRubbish = if (prunes.isEmpty()) excludes else prunes,
         sinceVersion = sinceVersion,

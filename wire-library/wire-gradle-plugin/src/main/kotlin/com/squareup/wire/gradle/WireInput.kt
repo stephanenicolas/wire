@@ -24,6 +24,8 @@ import org.gradle.api.artifacts.FileCollectionDependency
 import org.gradle.api.file.SourceDirectorySet
 import org.gradle.api.internal.file.FileOrUriNotationConverter
 import org.gradle.api.logging.Logger
+import org.gradle.api.provider.Provider
+import org.gradle.api.provider.ProviderFactory
 import java.io.File
 import java.net.URI
 
@@ -32,12 +34,12 @@ import java.net.URI
  * directory trees, jars, and coordinates). This includes registering dependencies with the project
  * so they can be resolved for us.
  */
-internal class WireInput(var configuration2: Configuration) {
+internal class WireInput(var configuration2: Provider<Configuration>) {
   val name: String
-    get() = configuration2.name
+    get() = configuration2.get().name
 
-  private val dependencyToIncludes = mutableMapOf<String, List<String>>()
-  private val locationList = mutableListOf<Location>()
+  val dependencyToIncludes = mutableMapOf<String, List<String>>()
+  val locationList = mutableListOf<Location>()
   private val parser = FileOrUriNotationConverter.parser()
 
   fun addPaths(project: Project, paths: Set<String>) {
@@ -66,7 +68,7 @@ internal class WireInput(var configuration2: Configuration) {
             )
         } else {
             val dependency = project.dependencies.create(path)
-            configuration2.dependencies.add(dependency)
+            configuration2.get().dependencies.add(dependency)
         }
     }
   }
@@ -75,8 +77,6 @@ internal class WireInput(var configuration2: Configuration) {
     for (jar in jars) {
       jar.srcJar?.let { path ->
         println("jar added: $path")
-        val dependency = resolveDependency(project, path)
-        dependencyToIncludes[dependency.id] = jar.includes
 
         val converted = parser.parseNotation(path)
         if (converted is File) {
@@ -105,7 +105,8 @@ internal class WireInput(var configuration2: Configuration) {
           )
       } else {
           val dependency = project.dependencies.create(path)
-          configuration2.dependencies.add(dependency)
+          dependencyToIncludes[dependency.id] = jar.includes
+          configuration2.get().dependencies.add(dependency)
         }
       }
     }
@@ -133,50 +134,6 @@ internal class WireInput(var configuration2: Configuration) {
     }
   }
 
-  private fun resolveDependency(project: Project, path: String): Dependency {
-    val parser = FileOrUriNotationConverter.parser()
-
-    val converted = parser.parseNotation(path)
-
-    if (converted is File) {
-      println("file resolved: $converted for path: $path")
-      val file = if (!converted.isAbsolute) File(project.projectDir, converted.path) else converted
-
-      check(file.exists()) { "Invalid path string: \"$path\". Path does not exist." }
-
-      return when {
-        file.isDirectory -> {
-          println("dir resolved: $path")
-          project.dependencies.create(project.files(path))
-        }
-        file.isJar -> {
-          println("jar resolved: $path")
-          project.dependencies.create(project.files(file.path))
-        }
-        else -> throw IllegalArgumentException(
-            """
-            |Invalid path string: "$path".
-            |For individual files, use the following syntax:
-            |wire {
-            |  sourcePath {
-            |    srcDir 'dirPath'
-            |    include 'relativePath'
-            |  }
-            |}
-            """.trimMargin()
-        )
-      }
-    } else if (converted is URI && isURL(converted)) {
-      throw IllegalArgumentException(
-          "Invalid path string: \"$path\". URL dependencies are not allowed."
-      )
-    } else {
-      println("external deps: $path")
-      // Assume it's a possible external dependency and let Gradle sort it out later.
-      return project.dependencies.create(path)
-    }
-  }
-
   private fun isURL(uri: URI) =
       try {
         uri.toURL()
@@ -186,11 +143,11 @@ internal class WireInput(var configuration2: Configuration) {
       }
 
   fun debug(logger: Logger) {
-    configuration2.dependencies.forEach { dep ->
+    configuration2.get().dependencies.forEach { dep ->
       val srcDirs = ((dep as? FileCollectionDependency)?.files as? SourceDirectorySet)?.srcDirs
       val includes = dependencyToIncludes[dep.id] ?: listOf()
       logger.debug("dep: $dep -> $srcDirs")
-      logger.debug("$name.files for dep: ${configuration2.files(dep)}")
+      logger.debug("$name.files for dep: ${configuration2.get().files(dep)}")
       logger.debug("$name.includes for dep: $includes")
     }
   }
@@ -198,57 +155,28 @@ internal class WireInput(var configuration2: Configuration) {
   val Dependency.id
           get() = "$group:$name:$version"
 
-  fun toLocations(): List<Location> {
+  fun toLocations(): Provider<List<Location>> {
     println("new location list: $locationList")
-    val locationConfig2 = configuration2.dependencies
-            .flatMap { dep ->
-              configuration2.files(dep)
-                      .map { file ->
-                        val includes = dependencyToIncludes[dep.id] ?: listOf()
-                        println("dep location for jar include: $includes for path: ${dep.id}")
-                        if (includes.isEmpty()) {
-                          return listOf(Location.get(file.path))
-                        }
-
-                        return includes.map { include ->
-                          Location.get(base = file.path, path = include)
-                        }
-                      }
-            }
+    val locationConfig2 : Provider<List<Location>> = configuration2.map {
+        it.dependencies
+                .flatMap { dep ->
+                    configuration2.get().files(dep)
+                            .flatMap { file ->
+                                val includes = dependencyToIncludes[dep.id] ?: listOf()
+                                println("dep location for jar include: $includes for path: ${dep.id}")
+                                val value: List<Location> = if (includes.isEmpty()) {
+                                    listOf(Location.get(file.path))
+                                } else {
+                                    includes.map { include ->
+                                        Location.get(base = file.path, path = include)
+                                    }
+                                }
+                                value
+                            }
+                }.plus(locationList)
+    }
     println("new config : $locationConfig2")
-    val locationConfig = configuration2.dependencies
-            .flatMap { dep ->
-              configuration2.files(dep)
-                      .flatMap { file ->
-                        file.toLocations(dep)
-                      }
-            }
-      println("old config : $locationConfig")
-      println("equal config : ${locationConfig.equals(locationConfig2.plus(locationList))}")
-      return locationConfig2.plus(locationList)
-  }
-
-  private fun File.toLocations(dependency: Dependency): List<Location> {
-    if (dependency is FileCollectionDependency && dependency.files is SourceDirectorySet) {
-      val srcDir = (dependency.files as SourceDirectorySet).srcDirs.first {
-        path.startsWith(it.path + "/")
-      }
-      println("dep location for src dir: $path")
-      return listOf(Location.get(
-          base = srcDir.path,
-          path = path.substring(srcDir.path.length + 1)
-      ))
-    }
-
-    val includes = dependencyToIncludes[dependency.id] ?: listOf()
-    println("dep location for jar include: $includes for path: ${dependency.id}")
-    if (includes.isEmpty()) {
-      return listOf(Location.get(path))
-    }
-
-    return includes.map { include ->
-      Location.get(base = path, path = include)
-    }
+      return locationConfig2
   }
 
   private val File.isJar
