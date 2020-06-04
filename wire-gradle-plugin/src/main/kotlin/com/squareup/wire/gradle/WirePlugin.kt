@@ -19,7 +19,9 @@ import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.plugins.JavaBasePlugin
 import org.gradle.api.tasks.SourceSetContainer
+import org.gradle.api.tasks.TaskProvider
 import org.jetbrains.kotlin.gradle.plugin.KotlinBasePluginWrapper
+import java.io.File
 
 class WirePlugin : Plugin<Project> {
   private var kotlin = false
@@ -33,6 +35,14 @@ class WirePlugin : Plugin<Project> {
     val extension = project.extensions.create(
         "wire", WireExtension::class.java, project
     )
+
+    project.configurations.create("protoSource")
+    project.configurations.create("protoPath")
+
+    project.tasks.register("generateProtos", WireTask::class.java) { task ->
+      task.group = "wire"
+      task.description = "Generate Wire protocol buffer implementation for .proto files"
+    }
 
     project.plugins.all {
       logger.debug("plugin: $it")
@@ -68,7 +78,7 @@ class WirePlugin : Plugin<Project> {
     project: Project,
     extension: WireExtension
   ) {
-    val sourceInput = WireInput(project.configurations.create("wireSourceDependencies"))
+    val sourceInput = WireInput(project.configurations.named("protoSource"))
     if (extension.sourcePaths.isNotEmpty() ||
         extension.sourceTrees.isNotEmpty() ||
         extension.sourceJars.isNotEmpty()) {
@@ -79,7 +89,7 @@ class WirePlugin : Plugin<Project> {
       sourceInput.addPaths(project, setOf("src/main/proto"))
     }
 
-    val protoInput = WireInput(project.configurations.create("wireProtoDependencies"))
+    val protoInput = WireInput(project.configurations.named("protoPath"))
     if (extension.protoPaths.isNotEmpty() ||
         extension.protoTrees.isNotEmpty() ||
         extension.protoJars.isNotEmpty()) {
@@ -104,17 +114,20 @@ class WirePlugin : Plugin<Project> {
     }
 
     val targets = outputs.map { it.toTarget() }
-
-    val wireTask = project.tasks.register("generateProtos", WireTask::class.java) { task ->
-      task.source(sourceInput.configuration)
-      task.sourceInput = sourceInput
-      task.protoInput = protoInput
-      task.roots = extension.roots.toList()
-      task.prunes = extension.prunes.toList()
-      task.rules = extension.rules
-      task.targets = targets
-      task.group = "wire"
-      task.description = "Generate Wire protocol buffer implementation for .proto files"
+    val wireTask = project.tasks.named("generateProtos") as TaskProvider<WireTask>
+    wireTask.configure {
+      if (it.logger.isDebugEnabled) {
+        sourceInput.debug(it.logger)
+        protoInput.debug(it.logger)
+      }
+      it.outputDirectories = outputs.map { output -> File(output.out!!) }
+      it.source(sourceInput.configuration)
+      it.sourceInput.set(sourceInput.toLocations())
+      it.protoInput.set(protoInput.toLocations())
+      it.roots = extension.roots.toList()
+      it.prunes = extension.prunes.toList()
+      it.rules = extension.rules
+      it.targets = targets
     }
 
     for (output in outputs) {
