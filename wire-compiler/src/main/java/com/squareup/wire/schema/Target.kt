@@ -27,9 +27,10 @@ import com.squareup.wire.kotlin.KotlinGenerator
 import com.squareup.wire.kotlin.RpcCallStyle
 import com.squareup.wire.kotlin.RpcRole
 import java.io.IOException
+import java.io.Serializable
 import java.nio.file.FileSystem
 
-sealed class Target {
+sealed class Target : Serializable {
   /**
    * Proto types to include generated sources for. Types listed here will be generated for this
    * target and not for subsequent targets in the task.
